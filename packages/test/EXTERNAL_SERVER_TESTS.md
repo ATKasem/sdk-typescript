@@ -24,8 +24,6 @@ configure the test server connection. Envconfig resolves settings from environme
 - `TEMPORAL_TLS_SERVER_NAME`
 - `TEMPORAL_GRPC_META_*`
 
-`TEMPORAL_TEST_RUN_ID` can be set to suffix generated task queues for shared namespaces.
-
 Example:
 
 ```sh
@@ -34,7 +32,6 @@ TEMPORAL_TEST_ENV_CONFIG_SERVER=true \
 TEMPORAL_ADDRESS=namespace.account.tmprl.cloud:7233 \
 TEMPORAL_NAMESPACE=namespace.account \
 TEMPORAL_API_KEY=... \
-TEMPORAL_TEST_RUN_ID=release-2026-06-29 \
 pnpm run test:external
 ```
 
@@ -44,7 +41,6 @@ TOML example:
 pnpm run build
 TEMPORAL_TEST_ENV_CONFIG_SERVER=true \
 TEMPORAL_CONFIG_FILE=/path/to/temporal.toml \
-TEMPORAL_TEST_RUN_ID=release-2026-06-29 \
 pnpm run test:external
 ```
 

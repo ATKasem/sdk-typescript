@@ -44,12 +44,10 @@ export interface BaseHelpers {
  * Default task queue transform function that converts test title to a valid task queue name.
  */
 export function defaultTaskQueueTransform(title: string): string {
-  const taskQueue = title
+  return title
     .toLowerCase()
     .replaceAll(/[ _()'-]+/g, '-')
     .replace(/^[-]?(.+?)[-]?$/, '$1');
-  const suffix = process.env.TEMPORAL_TEST_RUN_ID?.toLowerCase().replaceAll(/[^a-z0-9-]+/g, '-');
-  return suffix ? `${taskQueue}-${suffix}` : taskQueue;
 }
 
 /**
