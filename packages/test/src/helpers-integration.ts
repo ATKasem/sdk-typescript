@@ -171,7 +171,7 @@ export function helpers(t: ExecutionContext<Context>, env?: TestWorkflowEnvironm
   return {
     ...base,
     async createNativeConnection(opts?: Partial<NativeConnectionOptions>): Promise<NativeConnection> {
-      return await NativeConnection.connect({ address: testEnv.address, ...opts });
+      return await NativeConnection.connect({ ...testEnv.connectionOptions, address: testEnv.address, ...opts });
     },
     async runReplayHistory(
       opts: Partial<ReplayWorkerOptions>,

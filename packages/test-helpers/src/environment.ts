@@ -1,10 +1,17 @@
 import type { LocalTestWorkflowEnvironmentOptions } from '@temporalio/testing';
 import { workflowInterceptorModules as defaultWorkflowInterceptorModules } from '@temporalio/testing';
-import type { BundlerPlugin, WorkflowBundleWithSourceMap, BundleOptions } from '@temporalio/worker';
+import { loadClientConnectConfig } from '@temporalio/envconfig';
+import type {
+  BundlerPlugin,
+  WorkflowBundleWithSourceMap,
+  BundleOptions,
+  NativeConnectionOptions,
+} from '@temporalio/worker';
 import { bundleWorkflowCode, DefaultLogger } from '@temporalio/worker';
 import { defineSearchAttributeKey, SearchAttributeType } from '@temporalio/common/lib/search-attributes';
 import { TestWorkflowEnvironment } from './wrappers';
 import { baseBundlerIgnoreModules } from './bundler';
+import { isSet } from './flags';
 
 export const defaultDynamicConfigOptions = [
   'system.enableActivityEagerExecution=true',
@@ -75,17 +82,45 @@ export async function createLocalTestEnvironment(
   });
 }
 
+export function isExternalTestServerConfigSet(): boolean {
+  return isSet(process.env.TEMPORAL_TEST_EXTERNAL_SERVER, false);
+}
+
+function getExternalServerConfig(): {
+  address: string;
+  namespace: string;
+  connectionOptions: Pick<NativeConnectionOptions, 'apiKey' | 'metadata' | 'tls'>;
+} {
+  const { connectionOptions, namespace } = loadClientConnectConfig();
+  if (connectionOptions.address === undefined) {
+    throw new TypeError('External test server mode requires TEMPORAL_TEST_EXTERNAL_SERVER=true and an envconfig address');
+  }
+  if (namespace === undefined) {
+    throw new TypeError('External test server mode requires TEMPORAL_TEST_EXTERNAL_SERVER=true and an envconfig namespace');
+  }
+  const { address, apiKey, metadata, tls } = connectionOptions;
+  return {
+    address,
+    namespace,
+    connectionOptions: { apiKey, metadata, tls },
+  };
+}
+
 /**
- * Create a test workflow environment, using an existing server if TEMPORAL_SERVICE_ADDRESS is set,
+ * Create a test workflow environment, using an existing server if TEMPORAL_TEST_EXTERNAL_SERVER is truthy,
  * otherwise creating a local one.
  */
 export async function createTestWorkflowEnvironment(
   opts?: LocalTestWorkflowEnvironmentOptions
 ): Promise<TestWorkflowEnvironment> {
   let env: TestWorkflowEnvironment;
-  if (process.env.TEMPORAL_SERVICE_ADDRESS) {
+  if (isExternalTestServerConfigSet()) {
+    const { address, namespace, connectionOptions } = getExternalServerConfig();
     env = await TestWorkflowEnvironment.createFromExistingServer({
-      address: process.env.TEMPORAL_SERVICE_ADDRESS,
+      address,
+      namespace,
+      connectionOptions,
+      client: opts?.client,
       plugins: opts?.plugins,
     });
   } else {

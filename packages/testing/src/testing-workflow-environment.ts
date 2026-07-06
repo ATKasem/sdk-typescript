@@ -41,6 +41,12 @@ export type ExistingServerTestWorkflowEnvironmentOptions = {
   address?: string;
   /** If not set, defaults to default */
   namespace?: string;
+  /**
+   * Connection options used for both the client and worker connections.
+   *
+   * This is intentionally limited to options supported by both connection types.
+   */
+  connectionOptions?: Pick<NativeConnectionOptions, 'apiKey' | 'metadata' | 'tls'>;
   client?: ClientOptionsForTestEnv;
   plugins?: (ClientPlugin | ConnectionPlugin | NativeConnectionPlugin)[];
 };
@@ -99,7 +105,11 @@ export class TestWorkflowEnvironment {
     /**
      * Address used when constructing `connection` and `nativeConnection`
      */
-    public readonly address: string
+    public readonly address: string,
+    /**
+     * Connection options used when constructing `connection` and `nativeConnection`.
+     */
+    public readonly connectionOptions: Pick<NativeConnectionOptions, 'apiKey' | 'metadata' | 'tls'>
   ) {
     this.connection = connection;
     this.nativeConnection = nativeConnection;
@@ -205,6 +215,7 @@ export class TestWorkflowEnvironment {
       namespace: opts?.namespace ?? 'default',
       supportsTimeSkipping: false,
       address: opts?.address,
+      connectionOptions: opts?.connectionOptions,
     });
   }
 
@@ -216,9 +227,10 @@ export class TestWorkflowEnvironment {
       supportsTimeSkipping: boolean;
       namespace?: string;
       address?: string;
+      connectionOptions?: Pick<NativeConnectionOptions, 'apiKey' | 'metadata' | 'tls'>;
     }
   ): Promise<TestWorkflowEnvironment> {
-    const { supportsTimeSkipping, namespace, ...rest } = opts;
+    const { supportsTimeSkipping, namespace, connectionOptions, ...rest } = opts;
     const optsWithDefaults = addDefaults(filterNullAndUndefined(rest));
 
     let address: string;
@@ -243,12 +255,15 @@ export class TestWorkflowEnvironment {
       server = 'existing';
     }
 
+    const connectionOptionsWithDefaults = connectionOptions ?? {};
     const nativeConnection = await NativeConnection.connect(<NativeConnectionOptions & InternalConnectionOptions>{
+      ...connectionOptionsWithDefaults,
       address,
       plugins: opts.plugins,
       [InternalConnectionOptionsSymbol]: { supportsTestService: supportsTimeSkipping },
     });
     const connection = await Connection.connect(<ConnectionOptions & InternalConnectionOptions>{
+      ...connectionOptionsWithDefaults,
       address,
       plugins: opts.plugins,
       [InternalConnectionOptionsSymbol]: { supportsTestService: supportsTimeSkipping },
@@ -262,7 +277,8 @@ export class TestWorkflowEnvironment {
       connection,
       nativeConnection,
       namespace,
-      address
+      address,
+      connectionOptionsWithDefaults
     );
   }
 

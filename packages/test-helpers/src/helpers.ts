@@ -44,10 +44,12 @@ export interface BaseHelpers {
  * Default task queue transform function that converts test title to a valid task queue name.
  */
 export function defaultTaskQueueTransform(title: string): string {
-  return title
+  const taskQueue = title
     .toLowerCase()
     .replaceAll(/[ _()'-]+/g, '-')
     .replace(/^[-]?(.+?)[-]?$/, '$1');
+  const suffix = process.env.TEMPORAL_TEST_RUN_ID?.toLowerCase().replaceAll(/[^a-z0-9-]+/g, '-');
+  return suffix ? `${taskQueue}-${suffix}` : taskQueue;
 }
 
 /**
@@ -73,6 +75,7 @@ export function helpers<TEnv extends AnyTestWorkflowEnvironment = TestWorkflowEn
     async createWorker(workerOpts?: Partial<WorkerOptions>): Promise<Worker> {
       return await Worker.create({
         connection: env.nativeConnection,
+        namespace: env.namespace,
         workflowBundle,
         taskQueue,
         showStackTraceSources: true,

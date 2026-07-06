@@ -23,6 +23,7 @@ export {
   RUN_INTEGRATION_TESTS,
   REUSE_V8_CONTEXT,
   RUN_TIME_SKIPPING_TESTS,
+  isExternalTestServerConfigSet,
   cleanStackTrace,
   cleanOptionalStackTrace,
   compareStackTrace,
