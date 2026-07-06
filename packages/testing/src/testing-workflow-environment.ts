@@ -33,21 +33,18 @@ export type TimeSkippingTestWorkflowEnvironmentOptions = {
   plugins?: (ClientPlugin | ConnectionPlugin | NativeConnectionPlugin)[];
 };
 
-type ExistingServerConnectionOptions = Pick<NativeConnectionOptions, 'address' | 'apiKey' | 'metadata' | 'tls'>;
+type ExistingServerConnectionOptions = Pick<NativeConnectionOptions, 'apiKey' | 'metadata' | 'tls'>;
 
 /**
  * Options for {@link TestWorkflowEnvironment.createExistingServer}
+ *
+ * Accepts connection options that can be used for both the client and worker connections.
  */
 export type ExistingServerTestWorkflowEnvironmentOptions = {
   /** If not set, defaults to localhost:7233 */
   address?: string;
   /** If not set, defaults to default */
   namespace?: string;
-  /**
-   * Connection options used for both the client and worker connections.
-   *
-   * This is intentionally limited to options supported by both connection types.
-   */
   connectionOptions?: ExistingServerConnectionOptions;
   client?: ClientOptionsForTestEnv;
   plugins?: (ClientPlugin | ConnectionPlugin | NativeConnectionPlugin)[];
@@ -210,6 +207,7 @@ export class TestWorkflowEnvironment {
   static async createFromExistingServer(
     opts?: ExistingServerTestWorkflowEnvironmentOptions
   ): Promise<TestWorkflowEnvironment> {
+    const { apiKey, metadata, tls } = opts?.connectionOptions ?? {};
     return await this.create({
       server: { type: 'existing' },
       client: opts?.client,
@@ -217,7 +215,7 @@ export class TestWorkflowEnvironment {
       namespace: opts?.namespace ?? 'default',
       supportsTimeSkipping: false,
       address: opts?.address,
-      connectionOptions: opts?.connectionOptions,
+      connectionOptions: { apiKey, metadata, tls },
     });
   }
 
@@ -253,7 +251,7 @@ export class TestWorkflowEnvironment {
       server = await runtime.createEphemeralServer(toNativeEphemeralServerConfig(optsWithDefaults.server));
       address = native.ephemeralServerGetTarget(server);
     } else {
-      address = connectionOptions?.address ?? opts.address ?? 'localhost:7233';
+      address = opts.address ?? 'localhost:7233';
       server = 'existing';
     }
 

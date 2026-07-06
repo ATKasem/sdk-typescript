@@ -24,6 +24,9 @@ configure the test server connection. Envconfig resolves settings from environme
 - `TEMPORAL_TLS_SERVER_NAME`
 - `TEMPORAL_GRPC_META_*`
 
+`TEMPORAL_SERVICE_ADDRESS` remains supported as a legacy shortcut for connecting to an existing server without
+envconfig. Use `TEMPORAL_TEST_ENV_CONFIG_SERVER` for namespace, auth, TLS, metadata, and TOML configuration.
+
 Example:
 
 ```sh

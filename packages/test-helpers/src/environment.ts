@@ -95,10 +95,17 @@ export async function createTestWorkflowEnvironment(
   let env: TestWorkflowEnvironment;
   if (useTestServerEnvConfig()) {
     const { namespace, connectionOptions } = loadClientConnectConfig();
+    const { address, apiKey, metadata, tls } = connectionOptions;
     env = await TestWorkflowEnvironment.createFromExistingServer({
+      address,
       namespace,
-      connectionOptions,
+      connectionOptions: { apiKey, metadata, tls },
       client: opts?.client,
+      plugins: opts?.plugins,
+    });
+  } else if (process.env.TEMPORAL_SERVICE_ADDRESS) {
+    env = await TestWorkflowEnvironment.createFromExistingServer({
+      address: process.env.TEMPORAL_SERVICE_ADDRESS,
       plugins: opts?.plugins,
     });
   } else {
