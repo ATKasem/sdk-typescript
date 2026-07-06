@@ -1,11 +1,7 @@
 import type { LocalTestWorkflowEnvironmentOptions } from '@temporalio/testing';
 import { workflowInterceptorModules as defaultWorkflowInterceptorModules } from '@temporalio/testing';
 import { loadClientConnectConfig } from '@temporalio/envconfig';
-import type {
-  BundlerPlugin,
-  WorkflowBundleWithSourceMap,
-  BundleOptions,
-} from '@temporalio/worker';
+import type { BundlerPlugin, WorkflowBundleWithSourceMap, BundleOptions } from '@temporalio/worker';
 import { bundleWorkflowCode, DefaultLogger } from '@temporalio/worker';
 import { defineSearchAttributeKey, SearchAttributeType } from '@temporalio/common/lib/search-attributes';
 import { TestWorkflowEnvironment } from './wrappers';
@@ -81,10 +77,6 @@ export async function createLocalTestEnvironment(
   });
 }
 
-export function useTestServerEnvConfig(): boolean {
-  return isSet(process.env.TEMPORAL_TEST_ENV_CONFIG_SERVER, false);
-}
-
 /**
  * Create a test workflow environment.
  *
@@ -95,7 +87,7 @@ export async function createTestWorkflowEnvironment(
   opts?: LocalTestWorkflowEnvironmentOptions
 ): Promise<TestWorkflowEnvironment> {
   let env: TestWorkflowEnvironment;
-  if (useTestServerEnvConfig()) {
+  if (isSet(process.env.TEMPORAL_TEST_ENV_CONFIG_SERVER, false)) {
     const { namespace, connectionOptions } = loadClientConnectConfig();
     const { address, apiKey, metadata, tls } = connectionOptions;
     env = await TestWorkflowEnvironment.createFromExistingServer({
@@ -105,7 +97,7 @@ export async function createTestWorkflowEnvironment(
       client: opts?.client,
       plugins: opts?.plugins,
     });
-  } else if (process.env.TEMPORAL_SERVICE_ADDRESS) {
+  } else if (isSet(process.env.TEMPORAL_SERVICE_ADDRESS, false)) {
     env = await TestWorkflowEnvironment.createFromExistingServer({
       address: process.env.TEMPORAL_SERVICE_ADDRESS,
       plugins: opts?.plugins,

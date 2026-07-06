@@ -8,7 +8,7 @@ import {
   setAndClearTimeout,
 } from './integration-workflows-common';
 import { helpers, makeTestFunction } from './helpers-integration';
-import { loadHistory, RUN_TIME_SKIPPING_TESTS, useTestServerEnvConfig } from './helpers';
+import { loadHistory, RUN_TIME_SKIPPING_TESTS } from './helpers';
 
 export * from './integration-workflows-common';
 
@@ -88,7 +88,7 @@ test("Lang's SDK flags from 1.11.2 are retroactively applied on replay", async (
   t.pass();
 });
 
-if (RUN_TIME_SKIPPING_TESTS && !useTestServerEnvConfig()) {
+if (RUN_TIME_SKIPPING_TESTS) {
   test.serial('setTimeout and clearTimeout - works before and after 1.10.3', async (t) => {
     const env = await TestWorkflowEnvironment.createTimeSkipping();
     const { createWorker, startWorkflow } = helpers(t, env);
