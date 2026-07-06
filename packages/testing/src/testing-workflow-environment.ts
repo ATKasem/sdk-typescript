@@ -33,6 +33,8 @@ export type TimeSkippingTestWorkflowEnvironmentOptions = {
   plugins?: (ClientPlugin | ConnectionPlugin | NativeConnectionPlugin)[];
 };
 
+type ExistingServerConnectionOptions = Pick<NativeConnectionOptions, 'address' | 'apiKey' | 'metadata' | 'tls'>;
+
 /**
  * Options for {@link TestWorkflowEnvironment.createExistingServer}
  */
@@ -46,7 +48,7 @@ export type ExistingServerTestWorkflowEnvironmentOptions = {
    *
    * This is intentionally limited to options supported by both connection types.
    */
-  connectionOptions?: Pick<NativeConnectionOptions, 'apiKey' | 'metadata' | 'tls'>;
+  connectionOptions?: ExistingServerConnectionOptions;
   client?: ClientOptionsForTestEnv;
   plugins?: (ClientPlugin | ConnectionPlugin | NativeConnectionPlugin)[];
 };
@@ -109,7 +111,7 @@ export class TestWorkflowEnvironment {
     /**
      * Connection options used when constructing `connection` and `nativeConnection`.
      */
-    public readonly connectionOptions: Pick<NativeConnectionOptions, 'apiKey' | 'metadata' | 'tls'>
+    public readonly connectionOptions: ExistingServerConnectionOptions
   ) {
     this.connection = connection;
     this.nativeConnection = nativeConnection;
@@ -227,7 +229,7 @@ export class TestWorkflowEnvironment {
       supportsTimeSkipping: boolean;
       namespace?: string;
       address?: string;
-      connectionOptions?: Pick<NativeConnectionOptions, 'apiKey' | 'metadata' | 'tls'>;
+      connectionOptions?: ExistingServerConnectionOptions;
     }
   ): Promise<TestWorkflowEnvironment> {
     const { supportsTimeSkipping, namespace, connectionOptions, ...rest } = opts;
@@ -251,11 +253,11 @@ export class TestWorkflowEnvironment {
       server = await runtime.createEphemeralServer(toNativeEphemeralServerConfig(optsWithDefaults.server));
       address = native.ephemeralServerGetTarget(server);
     } else {
-      address = opts.address ?? 'localhost:7233';
+      address = connectionOptions?.address ?? opts.address ?? 'localhost:7233';
       server = 'existing';
     }
 
-    const connectionOptionsWithDefaults = connectionOptions ?? {};
+    const connectionOptionsWithDefaults = { ...(connectionOptions ?? {}), address };
     const nativeConnection = await NativeConnection.connect(<NativeConnectionOptions & InternalConnectionOptions>{
       ...connectionOptionsWithDefaults,
       address,

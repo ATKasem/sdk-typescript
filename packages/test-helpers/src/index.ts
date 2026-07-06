@@ -50,5 +50,5 @@ export {
   createTestWorkflowBundle,
   createLocalTestEnvironment,
   createTestWorkflowEnvironment,
-  isExternalTestServerConfigSet,
+  useTestServerEnvConfig,
 } from './environment';

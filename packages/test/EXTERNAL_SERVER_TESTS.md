@@ -5,11 +5,11 @@
 `pnpm run test:external` runs the subset of SDK integration tests that currently use the shared configurable test
 harness and are expected to work against an existing Temporal server.
 
-The shared harness switches to an existing server when `TEMPORAL_TEST_EXTERNAL_SERVER` is truthy (`1`, `t`, or
-`true`). After that explicit opt-in, it reads Temporal connection settings through envconfig's normal resolution:
-environment variables, `TEMPORAL_CONFIG_FILE`, `TEMPORAL_PROFILE`, and default TOML discovery.
+When `TEMPORAL_TEST_ENV_CONFIG_SERVER` is truthy (`1`, `t`, or `true`), the shared harness uses envconfig to
+configure the test server connection. Envconfig resolves settings from environment variables, `TEMPORAL_CONFIG_FILE`,
+`TEMPORAL_PROFILE`, and default TOML discovery.
 
-- `TEMPORAL_TEST_EXTERNAL_SERVER`
+- `TEMPORAL_TEST_ENV_CONFIG_SERVER`
 - `TEMPORAL_ADDRESS`
 - `TEMPORAL_NAMESPACE`
 - `TEMPORAL_API_KEY`
@@ -30,7 +30,7 @@ Example:
 
 ```sh
 pnpm run build
-TEMPORAL_TEST_EXTERNAL_SERVER=true \
+TEMPORAL_TEST_ENV_CONFIG_SERVER=true \
 TEMPORAL_ADDRESS=namespace.account.tmprl.cloud:7233 \
 TEMPORAL_NAMESPACE=namespace.account \
 TEMPORAL_API_KEY=... \
@@ -42,7 +42,7 @@ TOML example:
 
 ```sh
 pnpm run build
-TEMPORAL_TEST_EXTERNAL_SERVER=true \
+TEMPORAL_TEST_ENV_CONFIG_SERVER=true \
 TEMPORAL_CONFIG_FILE=/path/to/temporal.toml \
 TEMPORAL_TEST_RUN_ID=release-2026-06-29 \
 pnpm run test:external
