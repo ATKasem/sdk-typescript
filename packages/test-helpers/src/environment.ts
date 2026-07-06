@@ -86,8 +86,10 @@ export function useTestServerEnvConfig(): boolean {
 }
 
 /**
- * Create a test workflow environment, using environment configuration to configure the test server if
- * TEMPORAL_TEST_ENV_CONFIG_SERVER is truthy, otherwise creating a local one.
+ * Create a test workflow environment.
+ *
+ * Uses envconfig for the test server connection when TEMPORAL_TEST_ENV_CONFIG_SERVER is truthy, uses
+ * TEMPORAL_SERVICE_ADDRESS as a legacy existing-server shortcut when set, otherwise creates a local environment.
  */
 export async function createTestWorkflowEnvironment(
   opts?: LocalTestWorkflowEnvironmentOptions
