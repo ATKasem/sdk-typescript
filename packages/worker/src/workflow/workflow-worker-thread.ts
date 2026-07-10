@@ -1,12 +1,18 @@
 import { isMainThread, parentPort as parentPortOrNull } from 'node:worker_threads';
 import { IllegalStateError } from '@temporalio/common';
 import { coresdk } from '@temporalio/proto';
+import type { WorkflowInfo } from '@temporalio/workflow';
 import type { Workflow, WorkflowCreator } from './interface';
 import { ReusableVMWorkflowCreator } from './reusable-vm';
 import { VMWorkflowCreator } from './vm';
-import type { WorkerThreadRequest } from './workflow-worker-thread/input';
+import type { PatchActivationCallbackRequest, WorkerThreadRequest } from './workflow-worker-thread/input';
 import type { WorkerThreadResponse } from './workflow-worker-thread/output';
 import { isBun } from './bun';
+import {
+  PATCH_ACTIVATION_CALLBACK_BUFFER_SIZE,
+  PATCH_ACTIVATION_CALLBACK_HEADER_SIZE,
+  PatchActivationCallbackStatus,
+} from './patch-activation-callback';
 
 if (isMainThread) {
   throw new IllegalStateError(`Imported ${__filename} from main thread`);
@@ -26,6 +32,36 @@ function ok(requestId: bigint): WorkerThreadResponse {
 let workflowCreator: WorkflowCreator | undefined;
 let workflowGetter: (runId: string) => Workflow | undefined;
 
+function requestPatchActivation(workflowInfo: WorkflowInfo, patchId: string): boolean {
+  const sanitizedWorkflowInfo = {
+    ...workflowInfo,
+    unsafe: {
+      isReplaying: workflowInfo.unsafe.isReplaying,
+      isReplayingHistoryEvents: workflowInfo.unsafe.isReplayingHistoryEvents,
+    },
+    typedSearchAttributes: workflowInfo.typedSearchAttributes.toJSON(),
+  };
+  const resultBuffer = new SharedArrayBuffer(PATCH_ACTIVATION_CALLBACK_BUFFER_SIZE);
+  const request: PatchActivationCallbackRequest = {
+    type: 'patch-activation-callback',
+    workflowInfo: sanitizedWorkflowInfo,
+    patchId,
+    resultBuffer,
+  };
+  parentPort.postMessage(request);
+  const header = new Int32Array(resultBuffer, 0, 3);
+  Atomics.wait(header, 0, 0);
+  const status = Atomics.load(header, 1);
+  if (status === PatchActivationCallbackStatus.True) return true;
+  if (status === PatchActivationCallbackStatus.False) return false;
+  if (status === PatchActivationCallbackStatus.Error) {
+    const length = Atomics.load(header, 2);
+    const bytes = new Uint8Array(resultBuffer, PATCH_ACTIVATION_CALLBACK_HEADER_SIZE, length);
+    throw new Error(new TextDecoder().decode(bytes));
+  }
+  throw new IllegalStateError(`Invalid patch activation callback response status: ${status}`);
+}
+
 /**
  * Process a `WorkerThreadRequest` and resolve with a `WorkerThreadResponse`.
  */
@@ -36,14 +72,16 @@ async function handleRequest({ requestId, input }: WorkerThreadRequest): Promise
         workflowCreator = await ReusableVMWorkflowCreator.create(
           input.workflowBundle,
           input.isolateExecutionTimeoutMs,
-          input.registeredActivityNames
+          input.registeredActivityNames,
+          input.hasPatchActivationCallback ? requestPatchActivation : undefined
         );
         workflowGetter = (runId) => ReusableVMWorkflowCreator.workflowByRunId.get(runId);
       } else {
         workflowCreator = await VMWorkflowCreator.create(
           input.workflowBundle,
           input.isolateExecutionTimeoutMs,
-          input.registeredActivityNames
+          input.registeredActivityNames,
+          input.hasPatchActivationCallback ? requestPatchActivation : undefined
         );
         workflowGetter = (runId) => VMWorkflowCreator.workflowByRunId.get(runId);
       }

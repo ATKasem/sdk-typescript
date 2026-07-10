@@ -475,6 +475,9 @@ export class Activator implements ActivationHandler {
    */
   private readonly sentPatches = new Set<string>();
 
+  /** Memoized patch activation decisions, including decisions to leave a patch inactive. */
+  private readonly patchDecisions = new Map<string, boolean>();
+
   private readonly knownFlags = new Set<number>();
 
   sdkVersion?: string;
@@ -502,6 +505,8 @@ export class Activator implements ActivationHandler {
 
   protected readonly stackTracesEnabled: boolean;
 
+  private readonly patchActivationCallback?: (workflowInfo: WorkflowInfo, patchId: string) => boolean;
+
   constructor({
     info,
     now,
@@ -512,6 +517,7 @@ export class Activator implements ActivationHandler {
     registeredActivityNames,
     stackTracesEnabled,
     failureExceptionTypeNames,
+    patchActivationCallback,
   }: WorkflowCreateOptionsInternal) {
     this.getTimeOfDay = getTimeOfDay;
     this.info = info;
@@ -523,6 +529,7 @@ export class Activator implements ActivationHandler {
     this.registeredActivityNames = registeredActivityNames;
     this.stackTracesEnabled = stackTracesEnabled;
     this.failureExceptionTypeNames = failureExceptionTypeNames ?? [];
+    this.patchActivationCallback = patchActivationCallback;
   }
 
   protected setRandomnessSeed(randomnessSeed: number[]): void {
@@ -1199,7 +1206,19 @@ export class Activator implements ActivationHandler {
     if (this.workflow === undefined) {
       throw new IllegalStateError('Patches cannot be used before Workflow starts');
     }
-    const usePatch = !this.info.unsafe.isReplaying || this.knownPresentPatches.has(patchId);
+    let usePatch = this.patchDecisions.get(patchId);
+    if (usePatch === undefined) {
+      if (this.knownPresentPatches.has(patchId)) {
+        usePatch = true;
+      } else if (this.info.unsafe.isReplaying) {
+        usePatch = false;
+      } else if (!deprecated && this.patchActivationCallback !== undefined) {
+        usePatch = this.patchActivationCallback(this.info, patchId);
+        this.patchDecisions.set(patchId, usePatch);
+      } else {
+        usePatch = true;
+      }
+    }
     // Avoid sending commands for patches core already knows about.
     // This optimization enables development of automatic patching tools.
     if (usePatch && !this.sentPatches.has(patchId)) {

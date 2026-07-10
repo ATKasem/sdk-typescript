@@ -13,7 +13,7 @@ import type {
 import type { Duration } from '@temporalio/common/lib/time';
 import { msOptionalToNumber, msToNumber } from '@temporalio/common/lib/time';
 import { loadDataConverter } from '@temporalio/common/lib/internal-non-workflow';
-import type { LoggerSinks } from '@temporalio/workflow';
+import type { LoggerSinks, WorkflowInfo } from '@temporalio/workflow';
 import type { Context } from '@temporalio/activity';
 import type { native } from '@temporalio/core-bridge';
 import { throwIfReservedName } from '@temporalio/common/lib/reserved';
@@ -109,6 +109,17 @@ export interface WorkerOptions {
    * Mapping of activity name to implementation
    */
   activities?: object;
+
+  /**
+   * Called when a Workflow first encounters a non-deprecated patch on a non-replay activation.
+   * Returning `false` leaves the patch inactive and does not record a patch marker. The decision is
+   * memoized for the lifetime of the Workflow Execution.
+   *
+   * The callback runs synchronously in a read-only Workflow context. It must return an actual boolean.
+   *
+   * @experimental
+   */
+  patchActivationCallback?: PatchActivationCallback;
 
   /**
    * An array of Nexus services
@@ -738,6 +749,7 @@ export interface ReplayWorkerOptions
     | 'stickyQueueScheduleToStartTimeout'
     | 'maxCachedWorkflows'
     | 'useVersioning'
+    | 'patchActivationCallback'
   > {
   /**
    *  A optional name for this replay worker. It will be combined with an incremental ID to form a unique
@@ -747,6 +759,15 @@ export interface ReplayWorkerOptions
    */
   replayName?: string;
 }
+
+/** @experimental */
+export interface PatchActivationInput {
+  readonly workflowInfo: Readonly<WorkflowInfo>;
+  readonly patchId: string;
+}
+
+/** @experimental */
+export type PatchActivationCallback = (input: PatchActivationInput) => boolean;
 
 // Workflow Bundle /////////////////////////////////////////////////////////////////////////////////
 

@@ -1,5 +1,7 @@
 import type { RawSourceMap } from 'source-map';
+import type { SearchAttributePair } from '@temporalio/common';
 import type { coresdk } from '@temporalio/proto';
+import type { WorkflowInfo } from '@temporalio/workflow';
 import type { WorkflowCreateOptions } from '../interface';
 
 export interface WorkflowBundleWithSourceMapAndFilename {
@@ -17,6 +19,7 @@ export interface Init {
   workflowBundle: WorkflowBundleWithSourceMapAndFilename;
   registeredActivityNames: Set<string>;
   reuseV8Context: boolean;
+  hasPatchActivationCallback: boolean;
 }
 
 /**
@@ -68,4 +71,15 @@ export type WorkerThreadInput = Init | Destroy | CreateWorkflow | ActivateWorkfl
 export interface WorkerThreadRequest {
   requestId: bigint;
   input: WorkerThreadInput;
+}
+
+/** A synchronous callback request sent from a Workflow thread to its owning Worker. */
+export interface PatchActivationCallbackRequest {
+  type: 'patch-activation-callback';
+  workflowInfo: Omit<WorkflowInfo, 'typedSearchAttributes' | 'unsafe'> & {
+    typedSearchAttributes: SearchAttributePair[];
+    unsafe: Omit<WorkflowInfo['unsafe'], 'now' | 'random'>;
+  };
+  patchId: string;
+  resultBuffer: SharedArrayBuffer;
 }

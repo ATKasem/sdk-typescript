@@ -15,10 +15,16 @@ import {
 } from '@temporalio/common';
 import { msToTs } from '@temporalio/common/lib/time';
 import { coresdk, temporal } from '@temporalio/proto';
-import { LogTimestamp } from '@temporalio/worker';
+import { sleep as workflowSleep } from '@temporalio/workflow';
+import { DefaultLogger, LogTimestamp } from '@temporalio/worker';
 import { WorkflowCodeBundler } from '@temporalio/worker/lib/workflow/bundler';
+import { invokePatchActivationCallback } from '@temporalio/worker/lib/workflow/patch-activation-callback';
+import { ThreadedVMWorkflowCreator } from '@temporalio/worker/lib/workflow/threaded-vm';
+import type { WorkflowBundleWithSourceMapAndFilename } from '@temporalio/worker/lib/workflow/workflow-worker-thread/input';
+import type { PatchActivationCallback, PatchActivationInput } from '@temporalio/worker';
 import type { VMWorkflow } from '@temporalio/worker/lib/workflow/vm';
 import { VMWorkflowCreator } from '@temporalio/worker/lib/workflow/vm';
+import type { WorkflowCreator } from '@temporalio/worker/lib/workflow/interface';
 import type { SdkFlag } from '@temporalio/workflow/lib/flags';
 import { SdkFlags } from '@temporalio/workflow/lib/flags';
 import { createUnsafeRandomSource } from '@temporalio/workflow/lib/random-helpers';
@@ -36,6 +42,7 @@ export interface Context {
   startTime: number;
   runId: string;
   workflowCreator: TestVMWorkflowCreator | TestReusableVMWorkflowCreator;
+  workflowBundle: WorkflowBundleWithSourceMapAndFilename;
 }
 
 const test = anyTest as TestFn<Context>;
@@ -71,6 +78,7 @@ test.before(async (t) => {
   const workflowsPath = path.join(__dirname, 'workflows');
   const bundler = new WorkflowCodeBundler({ workflowsPath });
   const workflowBundle = parseWorkflowCode((await bundler.createBundle()).code);
+  t.context.workflowBundle = workflowBundle;
   // FIXME: isolateExecutionTimeoutMs used to be 200 ms, but that's causing
   //        lot of flakes on CI. Revert this after investigation / resolution.
   t.context.workflowCreator = REUSE_V8_CONTEXT
@@ -96,6 +104,7 @@ test.beforeEach(async (t) => {
     runId,
     workflowType,
     workflowCreator,
+    workflowBundle: t.context.workflowBundle,
     startTime,
     workflow,
   };
@@ -109,7 +118,7 @@ async function createWorkflow(
   workflowType: string,
   runId: string,
   startTime: number,
-  workflowCreator: VMWorkflowCreator | ReusableVMWorkflowCreator
+  workflowCreator: WorkflowCreator
 ) {
   const workflow = (await workflowCreator.createWorkflow({
     info: {
@@ -1870,6 +1879,126 @@ test('not-replay patchedWorkflow', async (t) => {
     compareCompletion(t, req, makeSuccess([makeCompleteWorkflowExecution()]));
   }
   t.deepEqual(logs, [['has change'], ['has change 2']]);
+});
+
+async function runPatchedWorkflowWithCallback(
+  t: ExecutionContext<Context>,
+  callback: PatchActivationCallback,
+  threaded = false,
+  initialActivation?: coresdk.workflow_activation.IWorkflowActivation,
+  workflowType = 'patchedWorkflow'
+): Promise<{ first: coresdk.workflow_completion.IWorkflowActivationCompletion; calls: PatchActivationInput[] }> {
+  const calls: PatchActivationInput[] = [];
+  const recordingCallback: PatchActivationCallback = (input) => {
+    calls.push(input);
+    return callback(input);
+  };
+  const creator = threaded
+    ? await ThreadedVMWorkflowCreator.create({
+        workflowBundle: t.context.workflowBundle,
+        threadPoolSize: 1,
+        isolateExecutionTimeoutMs: 400,
+        reuseV8Context: REUSE_V8_CONTEXT,
+        registeredActivityNames: new Set(),
+        logger: new DefaultLogger('WARN'),
+        patchActivationCallback: recordingCallback,
+      })
+    : REUSE_V8_CONTEXT
+      ? await TestReusableVMWorkflowCreator.create(t.context.workflowBundle, 400, new Set(), (info, patchId) =>
+          invokePatchActivationCallback(recordingCallback, info, patchId)
+        )
+      : await TestVMWorkflowCreator.create(t.context.workflowBundle, 400, new Set(), (info, patchId) =>
+          invokePatchActivationCallback(recordingCallback, info, patchId)
+        );
+  const runId = t.context.runId;
+  if ('logs' in creator) creator.logs[runId] = [];
+  const workflow = await createWorkflow(workflowType, runId, Date.now(), creator);
+  try {
+    const first = await workflow.activate(initialActivation ?? makeStartWorkflow(workflowType));
+    if (first.successful?.commands?.some((command) => command.startTimer !== undefined)) {
+      await workflow.activate(makeFireTimer(1));
+    }
+    return { first, calls };
+  } finally {
+    await workflow.dispose();
+    await creator.destroy();
+  }
+}
+
+test('patch activation callback true patchedWorkflow', async (t) => {
+  const { first, calls } = await runPatchedWorkflowWithCallback(t, () => true);
+  compareCompletion(
+    t,
+    first,
+    makeSuccess([
+      makeSetPatchMarker('my-change-id', false),
+      makeStartTimerCommand({ seq: 1, startToFireTimeout: msToTs(100) }),
+    ])
+  );
+  t.is(calls.length, 1);
+  t.is(calls[0]?.workflowInfo.workflowId, 'test-workflowId');
+  t.is(calls[0]?.patchId, 'my-change-id');
+});
+
+test('patch activation callback false patchedWorkflow', async (t) => {
+  const { first, calls } = await runPatchedWorkflowWithCallback(t, () => false);
+  compareCompletion(t, first, makeSuccess([makeStartTimerCommand({ seq: 1, startToFireTimeout: msToTs(100) })]));
+  t.is(calls.length, 1);
+});
+
+test('patch activation callback validates result patchedWorkflow', async (t) => {
+  const { first } = await runPatchedWorkflowWithCallback(t, () => 'yes' as unknown as boolean, true);
+  t.regex(first.failed?.failure?.message ?? '', /patchActivationCallback must return a boolean, got string/);
+});
+
+test('patch activation callback uses frozen read-only input patchedWorkflow', async (t) => {
+  const { first } = await runPatchedWorkflowWithCallback(t, (input) => {
+    t.true(Object.isFrozen(input));
+    t.true(Object.isFrozen(input.workflowInfo));
+    t.throws(() => workflowSleep(1), { message: /Workflow Execution/ });
+    t.throws(() => input.workflowInfo.unsafe.random.random(), { message: /randomness cannot be used/ });
+    return false;
+  });
+  t.falsy(first.failed);
+});
+
+test('threaded patch activation callback preserves closures patchedWorkflow', async (t) => {
+  let invoked = 0;
+  const { first, calls } = await runPatchedWorkflowWithCallback(
+    t,
+    () => {
+      invoked++;
+      return false;
+    },
+    true
+  );
+  t.falsy(first.failed);
+  t.is(invoked, 1);
+  t.is(calls.length, 1);
+});
+
+test('history patch marker bypasses patch activation callback patchedWorkflow', async (t) => {
+  const initialActivation: coresdk.workflow_activation.IWorkflowActivation = {
+    runId: 'test-runId',
+    timestamp: msToTs(Date.now()),
+    isReplaying: true,
+    jobs: [makeInitializeWorkflowJob('patchedWorkflow'), makeNotifyHasPatchJob('my-change-id')],
+  };
+  const { first, calls } = await runPatchedWorkflowWithCallback(t, () => false, false, initialActivation);
+  t.falsy(first.failed);
+  t.is(calls.length, 0);
+});
+
+test('deprecated patch bypasses patch activation callback deprecatePatchWorkflow', async (t) => {
+  const { first, calls } = await runPatchedWorkflowWithCallback(
+    t,
+    () => false,
+    false,
+    undefined,
+    'deprecatePatchWorkflow'
+  );
+  compareCompletion(t, first, makeSuccess([makeSetPatchMarker('my-change-id', true), makeCompleteWorkflowExecution()]));
+  t.is(calls.length, 0);
 });
 
 test('replay-no-marker patchedWorkflow', async (t) => {
